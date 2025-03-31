@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Automates security controls for public access prevention and alerts in AWS Console, without modifying existing resources.'
+
+Resources:
+  # --------------------
+  # IAM Policies to Block Future Public Access
+  # --------------------
+  IAMPolicyBlockPublicAccess:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "BlockPublicAccessPolicy"
+      Description: "Prevents users from allowing public access in EC2, S3, and RDS."
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Deny"
+            Action: "ec2:AuthorizeSecurityGroupIngress"
+            Resource: "*"
+            Condition:
+              IpAddressIfExists:
+                ec2:cidrBlock: "0.0.0.0/0"
+          - Effect: "Deny"
+            Action: ["s3:PutBucketPublicAccessBlock", "s3:PutBucketAcl", "s3:PutBucketPolicy"]
+            Resource: "arn:aws:s3:::*"
+            Condition:
+              StringEqualsIfExists:
+                "s3:x-amz-acl": "public-read"
+          - Effect: "Deny"
+            Action: "rds:ModifyDBInstance"
+            Resource: "*"
+            Condition:
+              BoolIfExists:
+                "rds:PubliclyAccessible": "true"
+
+  # --------------------
+  # AWS Lambda Function for Auto-Remediation
+  # --------------------
+  SecurityAutoRemediationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "SecurityAutoRemediation"
+      Runtime: python3.9
+      Handler: "index.lambda_handler"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          
+          def lambda_handler(event, context):
+              print("Received Event: ", json.dumps(event, indent=2))
+              return {"statusCode": 200, "body": "Monitoring Only - No Changes Applied"}
+  
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "SecurityAutoRemediationRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "LambdaMonitoringOnly"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "*"
+
+  # --------------------
+  # AWS CloudTrail for Monitoring
+  # --------------------
+  SecurityTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: "SecurityMonitoringTrail"
+      S3BucketName: !Ref CloudTrailS3Bucket
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      EnableLogFileValidation: true
+
+  CloudTrailS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "cloudtrail-logs-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # --------------------
+  # SNS Topic for AWS Chatbot Console Alerts
+  # --------------------
+  SecurityAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "SecurityAlerts"
+
+  # --------------------
+  # AWS Chatbot for Console Alerts
+  # --------------------
+  AWSChatbotConfig:
+    Type: AWS::Chatbot::SlackChannelConfiguration
+    Properties:
+      ConfigurationName: "SecurityAlertsConsole"
+      IamRoleArn: !GetAtt ChatbotIAMRole.Arn
+      LoggingLevel: "INFO"
+      SnsTopicArns:
+        - !Ref SecurityAlertsTopic
+
+  ChatbotIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "ChatbotIAMRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "chatbot.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "ChatbotSNSAccess"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "sns:Publish"
+                Resource: !Ref SecurityAlertsTopic
+
+Outputs:
+  SecurityAlertsTopic:
+    Description: "SNS Topic for AWS Security Alerts"
+    Value: !Ref SecurityAlertsTopic
+  LambdaFunction:
+    Description: "Lambda function for security alerts"
+    Value: !Ref SecurityAutoRemediationLambda

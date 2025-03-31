@@ -1,12 +1,21 @@
 # Alert-Popup-
 A warning and alert pop-up message in AWS console whenever anyone tries to allow public access to AWS resources before actually implementing it on any resrouce in AWS account
 
-This project make use of AWS IAM policies (in case if you dont have SCP permissions), AWS Lmabda, AWS Cloudformation and AWS Chatbot services.
+This project make use of AWS IAM policies (in case if you dont have SCP permissions), AWS Lmabda, AWS Cloudformation and AWS SNS and AWS Chatbot services.
 
 ✅ **Use IAM policies** to block future public access (instead of SCPs).  
 ✅ **Deploy Lambda for auto-remediation** (without changing existing public resources).  
 ✅ **Automatically deploy the stack across n number of AWS accounts** using StackSets.  
 ✅ **Strictly ensure existing infrastructure is not modified.**  
+
+--------------
+### STEPS
+
+1. Refer to cloudformation stack "cf_template" and download or copy it.
+2. Deploy this cloudformation stack in your AWS account. 
+3. In case, if you have multiple AWS accounts, then deploy this stack in each of your AWS accounts, either manually or via AWS StackSets.
+
+-------------
 
 ### **✅ What This Updated CloudFormation Stack Does**
 1️⃣ **Blocks future public access** using IAM policies (instead of SCPs).  
@@ -15,7 +24,7 @@ This project make use of AWS IAM policies (in case if you dont have SCP permissi
 4️⃣ **Creates an SNS topic for security alerts.**  
 5️⃣ **Configures AWS Chatbot** to display security alerts in the AWS Console only (not Slack or email).  
 
----
+----------
 
 ### **🚀 Deployment Across n number of AWS Accounts**
 Since you don't have AWS Organizations access, deploy this template manually in each AWS account using:  
